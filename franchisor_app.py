@@ -84,7 +84,6 @@ LOCATIONS = {
     }
 }
 
-@st.cache_data(ttl=300)  # Cache for 5 minutes
 def load_sheet_data(gc, location, year, month):
     """Load data from specific Google Sheet tab"""
     try:
