@@ -123,8 +123,10 @@ def load_sheet_data(gc, location, year, month):
             
         df = pd.DataFrame(data)
         
-        # Clean and standardize column names
+        # Clean and standardize column names - use only first 4 columns
         if len(df.columns) >= 4:
+            # Take only the first 4 columns and rename them
+            df = df.iloc[:, :4].copy()
             df.columns = ['DateTime', 'Product', 'Quantity', 'Amount']
             
             # Convert Amount to numeric
