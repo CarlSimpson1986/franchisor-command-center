@@ -88,53 +88,70 @@ def load_sheet_data(gc, location, year, month):
     """Load data from specific Google Sheet tab"""
     try:
         sheet_name = LOCATIONS[location]["sheet_name"]
+        st.write(f"DEBUG: Looking for sheet: {sheet_name}")
         sheet = gc.open(sheet_name)
         
         # Get the specific month tab
+        st.write(f"DEBUG: Looking for tab: {month}")
         worksheet = sheet.worksheet(month)
+        st.write(f"DEBUG: Found worksheet: {worksheet.title}")
         
         # Get all data - handle empty columns properly
         try:
             data = worksheet.get_all_records()
+            st.write(f"DEBUG: Got {len(data)} records using get_all_records()")
         except Exception as e:
             if "duplicates" in str(e):
+                st.write("DEBUG: Handling duplicate headers...")
                 # Handle duplicate empty headers by getting raw data
                 all_values = worksheet.get_all_values()
+                st.write(f"DEBUG: Got {len(all_values)} raw rows")
                 if len(all_values) > 1:
                     headers = all_values[0]
+                    st.write(f"DEBUG: Headers: {headers[:6]}")  # Show first 6
                     # Take only first 4 columns to avoid empty columns
                     clean_headers = headers[:4] if len(headers) >= 4 else headers
                     rows = all_values[1:]
+                    st.write(f"DEBUG: Processing {len(rows)} data rows")
                     
                     data = []
                     for row in rows:
-                        if len(row) >= len(clean_headers):
+                        if len(row) >= len(clean_headers) and any(row[:4]):  # Check if row has data
                             row_dict = {}
                             for i, header in enumerate(clean_headers):
                                 row_dict[header] = row[i] if i < len(row) else ''
                             data.append(row_dict)
+                    st.write(f"DEBUG: Created {len(data)} data records")
                 else:
                     data = []
             else:
                 raise e
         
         if not data:
+            st.write("DEBUG: No data found in worksheet")
             return pd.DataFrame()
             
         df = pd.DataFrame(data)
+        st.write(f"DEBUG: DataFrame shape: {df.shape}")
+        st.write(f"DEBUG: DataFrame columns: {df.columns.tolist()}")
         
         # Clean and standardize column names - use only first 4 columns
         if len(df.columns) >= 4:
             # Take only the first 4 columns and rename them
             df = df.iloc[:, :4].copy()
             df.columns = ['DateTime', 'Product', 'Quantity', 'Amount']
+            st.write(f"DEBUG: After column cleanup: {df.shape}")
             
             # Convert Amount to numeric
             df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
+            st.write(f"DEBUG: After amount conversion, non-zero amounts: {(df['Amount'] != 0).sum()}")
             
             # Parse datetime
             df['DateTime'] = pd.to_datetime(df['DateTime'], errors='coerce')
+            valid_dates = df['DateTime'].notna().sum()
+            st.write(f"DEBUG: Valid dates: {valid_dates}")
             df = df.dropna(subset=['DateTime'])
+            st.write(f"DEBUG: After dropping invalid dates: {df.shape}")
             
             # Add metadata
             df['Location'] = location
@@ -143,10 +160,12 @@ def load_sheet_data(gc, location, year, month):
             
             return df
         else:
+            st.write(f"DEBUG: Not enough columns: {len(df.columns)}")
             return pd.DataFrame()
             
     except Exception as e:
         st.error(f"Error loading data for {location} {month}: {str(e)}")
+        st.write(f"DEBUG: Exception details: {type(e).__name__}: {str(e)}")
         return pd.DataFrame()
 
 def calculate_revenue_metrics(df):
