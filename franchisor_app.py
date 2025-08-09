@@ -41,7 +41,23 @@ def load_sheet_data(gc, location, year, month):
         df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
         
         # Parse datetime
-        df['DateTime'] = pd.to_datetime(df['DateTime'], format='%d/%m/%Y %H:%M:%S', errors='coerceimport streamlit as st
+        df['DateTime'] = pd.to_datetime(df['DateTime'], format='%d/%m/%Y %H:%M:%S', errors='coerce')
+        df = df.dropna(subset=['DateTime'])
+        
+        # Add metadata
+        df['Location'] = location
+        df['Year'] = year
+        df['Month'] = month
+        
+        return df
+    else:
+        st.write(f"DEBUG: Not enough columns: {len(df.columns)}")
+        return pd.DataFrame()
+        
+except Exception as e:
+    st.error(f"Error loading data for {location} {month}: {str(e)}")
+    st.write(f"DEBUG: Exception details: {type(e).__name__}: {str(e)}")
+    return pd.DataFrame()
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
