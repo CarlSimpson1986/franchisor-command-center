@@ -114,8 +114,16 @@ def load_sheet_data(gc, location, year, month):
         # Convert Amount to numeric
         df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
         
-        # Parse datetime
+        # Parse datetime - handle multiple formats
         df['DateTime'] = pd.to_datetime(df['DateTime'], format='%d/%m/%Y %H:%M:%S', errors='coerce')
+        
+        # Try alternative format for dates without seconds
+        mask = df['DateTime'].isna()
+        df.loc[mask, 'DateTime'] = pd.to_datetime(df.loc[mask, 'DateTime'].astype(str), format='%d/%m/%Y %H:%M', errors='coerce')
+        
+        # Final fallback - let pandas figure it out
+        mask = df['DateTime'].isna()
+        df.loc[mask, 'DateTime'] = pd.to_datetime(df.loc[mask, 'DateTime'].astype(str), errors='coerce')
         df = df.dropna(subset=['DateTime'])
         
         # Add metadata
