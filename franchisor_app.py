@@ -1,4 +1,47 @@
-import streamlit as st
+def load_sheet_data(gc, location, year, month):
+    """Load data from specific Google Sheet tab"""
+    try:
+        sheet_name = LOCATIONS[location]["sheet_name"]
+        sheet = gc.open(sheet_name)
+        worksheet = sheet.worksheet(month)
+        
+        # Get all values as raw data
+        all_values = worksheet.get_all_values()
+        
+        if len(all_values) < 2:  # No data rows
+            return pd.DataFrame()
+        
+        # First row is headers, rest is data
+        headers = all_values[0]
+        data_rows = all_values[1:]
+        
+        # Filter out empty rows
+        data_rows = [row for row in data_rows if any(cell.strip() for cell in row[:4])]
+        
+        if not data_rows:
+            return pd.DataFrame()
+        
+        # Create DataFrame with just first 4 columns
+        df_data = []
+        for row in data_rows:
+            if len(row) >= 4:
+                df_data.append({
+                    'DateTime': row[0],
+                    'Product': row[1], 
+                    'Quantity': row[2],
+                    'Amount': row[3]
+                })
+        
+        if not df_data:
+            return pd.DataFrame()
+            
+        df = pd.DataFrame(df_data)
+        
+        # Convert Amount to numeric
+        df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
+        
+        # Parse datetime
+        df['DateTime'] = pd.to_datetime(df['DateTime'], format='%d/%m/%Y %H:%M:%S', errors='coerceimport streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -107,16 +150,33 @@ def load_sheet_data(gc, location, year, month):
                 all_values = worksheet.get_all_values()
                 st.write(f"DEBUG: Got {len(all_values)} raw rows")
                 if len(all_values) > 1:
-                    headers = all_values[0]
-                    st.write(f"DEBUG: Headers: {headers[:6]}")  # Show first 6
-                    # Take only first 4 columns to avoid empty columns
-                    clean_headers = headers[:4] if len(headers) >= 4 else headers
-                    rows = all_values[1:]
+                    # Skip blank rows at the top to find real headers
+                    header_row_idx = 0
+                    for i, row in enumerate(all_values):
+                        if any(cell.strip() for cell in row[:4]):  # Found a row with data
+                            header_row_idx = i
+                            break
+                    
+                    headers = all_values[header_row_idx]
+                    st.write(f"DEBUG: Found headers at row {header_row_idx}: {headers[:6]}")
+                    
+                    # If headers are still blank, use default names
+                    if all(not cell.strip() for cell in headers[:4]):
+                        headers = ['Date', 'Item', 'Quantity Sold', 'Amount Inc Tax']
+                        data_start_row = 0  # Start from the beginning
+                        st.write("DEBUG: Using default headers, starting from row 0")
+                    else:
+                        data_start_row = header_row_idx + 1
+                        st.write(f"DEBUG: Using found headers, data starts at row {data_start_row}")
+                    
+                    # Take only first 4 columns
+                    clean_headers = headers[:4]
+                    rows = all_values[data_start_row:]
                     st.write(f"DEBUG: Processing {len(rows)} data rows")
                     
                     data = []
                     for row in rows:
-                        if len(row) >= len(clean_headers) and any(row[:4]):  # Check if row has data
+                        if len(row) >= 4 and any(cell.strip() for cell in row[:4]):  # Has data in first 4 cols
                             row_dict = {}
                             for i, header in enumerate(clean_headers):
                                 row_dict[header] = row[i] if i < len(row) else ''
