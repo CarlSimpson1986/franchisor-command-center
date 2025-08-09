@@ -1,63 +1,4 @@
-def load_sheet_data(gc, location, year, month):
-    """Load data from specific Google Sheet tab"""
-    try:
-        sheet_name = LOCATIONS[location]["sheet_name"]
-        sheet = gc.open(sheet_name)
-        worksheet = sheet.worksheet(month)
-        
-        # Get all values as raw data
-        all_values = worksheet.get_all_values()
-        
-        if len(all_values) < 2:  # No data rows
-            return pd.DataFrame()
-        
-        # First row is headers, rest is data
-        headers = all_values[0]
-        data_rows = all_values[1:]
-        
-        # Filter out empty rows
-        data_rows = [row for row in data_rows if any(cell.strip() for cell in row[:4])]
-        
-        if not data_rows:
-            return pd.DataFrame()
-        
-        # Create DataFrame with just first 4 columns
-        df_data = []
-        for row in data_rows:
-            if len(row) >= 4:
-                df_data.append({
-                    'DateTime': row[0],
-                    'Product': row[1], 
-                    'Quantity': row[2],
-                    'Amount': row[3]
-                })
-        
-        if not df_data:
-            return pd.DataFrame()
-            
-        df = pd.DataFrame(df_data)
-        
-        # Convert Amount to numeric
-        df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
-        
-        # Parse datetime
-        df['DateTime'] = pd.to_datetime(df['DateTime'], format='%d/%m/%Y %H:%M:%S', errors='coerce')
-        df = df.dropna(subset=['DateTime'])
-        
-        # Add metadata
-        df['Location'] = location
-        df['Year'] = year
-        df['Month'] = month
-        
-        return df
-    else:
-        st.write(f"DEBUG: Not enough columns: {len(df.columns)}")
-        return pd.DataFrame()
-        
-except Exception as e:
-    st.error(f"Error loading data for {location} {month}: {str(e)}")
-    st.write(f"DEBUG: Exception details: {type(e).__name__}: {str(e)}")
-    return pd.DataFrame()
+import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -78,8 +19,6 @@ st.set_page_config(
 def init_gspread():
     """Initialize Google Sheets connection using service account"""
     try:
-        # You'll need to upload your JSON credentials file to Streamlit
-        # For now, we'll use Streamlit secrets (safer approach)
         credentials_dict = {
             "type": st.secrets["gcp_service_account"]["type"],
             "project_id": st.secrets["gcp_service_account"]["project_id"],
@@ -144,104 +83,50 @@ LOCATIONS = {
 }
 
 def load_sheet_data(gc, location, year, month):
-    """Load data from specific Google Sheet tab"""
+    """Load data from specific Google Sheet tab - SIMPLE VERSION"""
     try:
         sheet_name = LOCATIONS[location]["sheet_name"]
-        st.write(f"DEBUG: Looking for sheet: {sheet_name}")
         sheet = gc.open(sheet_name)
-        
-        # Get the specific month tab
-        st.write(f"DEBUG: Looking for tab: {month}")
         worksheet = sheet.worksheet(month)
-        st.write(f"DEBUG: Found worksheet: {worksheet.title}")
         
-        # Get all data - handle empty columns properly
-        try:
-            data = worksheet.get_all_records()
-            st.write(f"DEBUG: Got {len(data)} records using get_all_records()")
-        except Exception as e:
-            if "duplicates" in str(e):
-                st.write("DEBUG: Handling duplicate headers...")
-                # Handle duplicate empty headers by getting raw data
-                all_values = worksheet.get_all_values()
-                st.write(f"DEBUG: Got {len(all_values)} raw rows")
-                if len(all_values) > 1:
-                    # Skip blank rows at the top to find real headers
-                    header_row_idx = 0
-                    for i, row in enumerate(all_values):
-                        if any(cell.strip() for cell in row[:4]):  # Found a row with data
-                            header_row_idx = i
-                            break
-                    
-                    headers = all_values[header_row_idx]
-                    st.write(f"DEBUG: Found headers at row {header_row_idx}: {headers[:6]}")
-                    
-                    # If headers are still blank, use default names
-                    if all(not cell.strip() for cell in headers[:4]):
-                        headers = ['Date', 'Item', 'Quantity Sold', 'Amount Inc Tax']
-                        data_start_row = 0  # Start from the beginning
-                        st.write("DEBUG: Using default headers, starting from row 0")
-                    else:
-                        data_start_row = header_row_idx + 1
-                        st.write(f"DEBUG: Using found headers, data starts at row {data_start_row}")
-                    
-                    # Take only first 4 columns
-                    clean_headers = headers[:4]
-                    rows = all_values[data_start_row:]
-                    st.write(f"DEBUG: Processing {len(rows)} data rows")
-                    
-                    data = []
-                    for row in rows:
-                        if len(row) >= 4 and any(cell.strip() for cell in row[:4]):  # Has data in first 4 cols
-                            row_dict = {}
-                            for i, header in enumerate(clean_headers):
-                                row_dict[header] = row[i] if i < len(row) else ''
-                            data.append(row_dict)
-                    st.write(f"DEBUG: Created {len(data)} data records")
-                else:
-                    data = []
-            else:
-                raise e
+        # Get all raw values
+        all_values = worksheet.get_all_values()
         
-        if not data:
-            st.write("DEBUG: No data found in worksheet")
+        if len(all_values) < 2:
             return pd.DataFrame()
-            
-        df = pd.DataFrame(data)
-        st.write(f"DEBUG: DataFrame shape: {df.shape}")
-        st.write(f"DEBUG: DataFrame columns: {df.columns.tolist()}")
         
-        # Clean and standardize column names - use only first 4 columns
-        if len(df.columns) >= 4:
-            # Take only the first 4 columns and rename them
-            df = df.iloc[:, :4].copy()
-            df.columns = ['DateTime', 'Product', 'Quantity', 'Amount']
-            st.write(f"DEBUG: After column cleanup: {df.shape}")
-            
-            # Convert Amount to numeric
-            df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
-            st.write(f"DEBUG: After amount conversion, non-zero amounts: {(df['Amount'] != 0).sum()}")
-            
-            # Parse datetime
-            df['DateTime'] = pd.to_datetime(df['DateTime'], errors='coerce')
-            valid_dates = df['DateTime'].notna().sum()
-            st.write(f"DEBUG: Valid dates: {valid_dates}")
-            df = df.dropna(subset=['DateTime'])
-            st.write(f"DEBUG: After dropping invalid dates: {df.shape}")
-            
-            # Add metadata
-            df['Location'] = location
-            df['Year'] = year
-            df['Month'] = month
-            
-            return df
-        else:
-            st.write(f"DEBUG: Not enough columns: {len(df.columns)}")
+        # Skip any empty rows at the top and use your actual data
+        data_rows = []
+        for row in all_values:
+            if len(row) >= 4 and row[0] and '/' in str(row[0]):  # Has date
+                data_rows.append({
+                    'DateTime': row[0],
+                    'Product': row[1],
+                    'Quantity': row[2], 
+                    'Amount': row[3]
+                })
+        
+        if not data_rows:
             return pd.DataFrame()
-            
+        
+        df = pd.DataFrame(data_rows)
+        
+        # Convert Amount to numeric
+        df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
+        
+        # Parse datetime
+        df['DateTime'] = pd.to_datetime(df['DateTime'], format='%d/%m/%Y %H:%M:%S', errors='coerce')
+        df = df.dropna(subset=['DateTime'])
+        
+        # Add metadata
+        df['Location'] = location
+        df['Year'] = year  
+        df['Month'] = month
+        
+        return df
+        
     except Exception as e:
-        st.error(f"Error loading data for {location} {month}: {str(e)}")
-        st.write(f"DEBUG: Exception details: {type(e).__name__}: {str(e)}")
+        st.error(f"Error loading {location} {month}: {str(e)}")
         return pd.DataFrame()
 
 def calculate_revenue_metrics(df):
@@ -375,10 +260,6 @@ def main():
     
     if df.empty:
         st.warning(f"⚠️ No data available for {location} - {month}")
-        st.info("This could mean:")
-        st.info("• The month tab doesn't exist yet")
-        st.info("• The sheet is empty")
-        st.info("• There's a connection issue")
         return
     
     # Calculate metrics
@@ -392,29 +273,25 @@ def main():
     with col1:
         st.metric(
             "💰 Total Revenue",
-            f"£{metrics['total_revenue']:,.2f}",
-            help="Total revenue for the selected period"
+            f"£{metrics['total_revenue']:,.2f}"
         )
     
     with col2:
         st.metric(
             "📊 Transactions", 
-            f"{metrics['transaction_count']:,}",
-            help="Number of transactions completed"
+            f"{metrics['transaction_count']:,}"
         )
     
     with col3:
         st.metric(
             "💳 Avg Transaction",
-            f"£{metrics['avg_transaction']:.2f}",
-            help="Average transaction value"
+            f"£{metrics['avg_transaction']:.2f}"
         )
     
     with col4:
         st.metric(
             "📅 Daily Average",
-            f"£{metrics['daily_average']:.2f}",
-            help="Average revenue per day"
+            f"£{metrics['daily_average']:.2f}"
         )
     
     # Performance Analysis
@@ -453,20 +330,6 @@ def main():
             df[['DateTime', 'Product', 'Amount']].sort_values('DateTime', ascending=False),
             use_container_width=True
         )
-        
-        # Download option
-        csv = df.to_csv(index=False)
-        st.download_button(
-            label="📥 Download Data as CSV",
-            data=csv,
-            file_name=f"{location}_{month}_data.csv",
-            mime="text/csv"
-        )
-    
-    # Footer
-    st.markdown("---")
-    st.markdown("🔄 Data updates automatically when you modify your Google Sheets")
-    st.markdown(f"📊 Currently viewing: **{location}** | **{month}** | **{len(df)} transactions**")
 
 if __name__ == "__main__":
     main()
