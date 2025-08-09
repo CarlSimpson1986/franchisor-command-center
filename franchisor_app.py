@@ -93,8 +93,30 @@ def load_sheet_data(gc, location, year, month):
         # Get the specific month tab
         worksheet = sheet.worksheet(month)
         
-        # Get all data
-        data = worksheet.get_all_records()
+        # Get all data - handle empty columns properly
+        try:
+            data = worksheet.get_all_records()
+        except Exception as e:
+            if "duplicates" in str(e):
+                # Handle duplicate empty headers by getting raw data
+                all_values = worksheet.get_all_values()
+                if len(all_values) > 1:
+                    headers = all_values[0]
+                    # Take only first 4 columns to avoid empty columns
+                    clean_headers = headers[:4] if len(headers) >= 4 else headers
+                    rows = all_values[1:]
+                    
+                    data = []
+                    for row in rows:
+                        if len(row) >= len(clean_headers):
+                            row_dict = {}
+                            for i, header in enumerate(clean_headers):
+                                row_dict[header] = row[i] if i < len(row) else ''
+                            data.append(row_dict)
+                else:
+                    data = []
+            else:
+                raise e
         
         if not data:
             return pd.DataFrame()
