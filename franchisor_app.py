@@ -83,7 +83,7 @@ LOCATIONS = {
 }
 
 def load_sheet_data(gc, location, year, month):
-    """Load data from specific Google Sheet tab - WITH DEBUG"""
+    """Load data from specific Google Sheet tab"""
     try:
         sheet_name = LOCATIONS[location]["sheet_name"]
         sheet = gc.open(sheet_name)
@@ -91,16 +91,13 @@ def load_sheet_data(gc, location, year, month):
         
         # Get all raw values
         all_values = worksheet.get_all_values()
-        st.write(f"DEBUG: Got {len(all_values)} total rows from sheet")
         
         if len(all_values) < 2:
-            st.write("DEBUG: Less than 2 rows in sheet")
             return pd.DataFrame()
         
-        # Skip any empty rows at the top and use your actual data
+        # Process data rows
         data_rows = []
-        skipped_rows = 0
-        for i, row in enumerate(all_values):
+        for row in all_values:
             if len(row) >= 4 and row[0] and '/' in str(row[0]):  # Has date
                 data_rows.append({
                     'DateTime': row[0],
@@ -108,70 +105,30 @@ def load_sheet_data(gc, location, year, month):
                     'Quantity': row[2], 
                     'Amount': row[3]
                 })
-            else:
-                skipped_rows += 1
-                if i < 5:  # Show first few skipped rows
-                    st.write(f"DEBUG: Skipped row {i}: {row[:4]}")
-        
-        st.write(f"DEBUG: Found {len(data_rows)} data rows, skipped {skipped_rows} rows")
         
         if not data_rows:
-            st.write("DEBUG: No valid data rows found")
             return pd.DataFrame()
         
-        # Show first few data rows
-        st.write(f"DEBUG: First few data rows:")
-        for i, row in enumerate(data_rows[:5]):
-            st.write(f"  Row {i}: {row}")
-        
         df = pd.DataFrame(data_rows)
-        st.write(f"DEBUG: DataFrame created with {len(df)} rows")
-        
-        # Show raw amounts before conversion
-        st.write(f"DEBUG: Raw amounts (first 10): {df['Amount'].head(10).tolist()}")
         
         # Convert Amount to numeric
         df['Amount'] = pd.to_numeric(df['Amount'], errors='coerce').fillna(0)
-        st.write(f"DEBUG: After numeric conversion:")
-        st.write(f"  - Total sum: £{df['Amount'].sum():.2f}")
-        st.write(f"  - Zero amounts: {(df['Amount'] == 0).sum()}")
-        st.write(f"  - Non-zero amounts: {(df['Amount'] != 0).sum()}")
-        st.write(f"  - Max amount: £{df['Amount'].max():.2f}")
-        st.write(f"  - Min amount: £{df['Amount'].min():.2f}")
         
         # Parse datetime - handle multiple formats
-        st.write(f"DEBUG: Parsing dates...")
         original_dates = df['DateTime'].copy()
-        
         df['DateTime'] = pd.to_datetime(df['DateTime'], format='%d/%m/%Y %H:%M:%S', errors='coerce')
-        failed_first = df['DateTime'].isna().sum()
-        st.write(f"DEBUG: First date format failed on {failed_first} rows")
         
         # Try alternative format for dates without seconds
         mask = df['DateTime'].isna()
         if mask.any():
             df.loc[mask, 'DateTime'] = pd.to_datetime(original_dates[mask], format='%d/%m/%Y %H:%M', errors='coerce')
-            failed_second = df['DateTime'].isna().sum()
-            st.write(f"DEBUG: Second date format failed on {failed_second} rows")
         
         # Final fallback - let pandas figure it out
         mask = df['DateTime'].isna()
         if mask.any():
             df.loc[mask, 'DateTime'] = pd.to_datetime(original_dates[mask], errors='coerce')
-            final_failed = df['DateTime'].isna().sum()
-            st.write(f"DEBUG: Final date parsing failed on {final_failed} rows")
         
-        # Show failed dates
-        if df['DateTime'].isna().any():
-            failed_dates = original_dates[df['DateTime'].isna()]
-            st.write(f"DEBUG: Failed to parse these dates: {failed_dates.head(5).tolist()}")
-        
-        before_drop = len(df)
         df = df.dropna(subset=['DateTime'])
-        after_drop = len(df)
-        st.write(f"DEBUG: Dropped {before_drop - after_drop} rows with invalid dates")
-        
-        st.write(f"DEBUG: Final dataset: {len(df)} rows, total revenue: £{df['Amount'].sum():.2f}")
         
         # Add metadata
         df['Location'] = location
@@ -388,4 +345,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
